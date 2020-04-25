@@ -1,4 +1,4 @@
-FROM fedora:25
+FROM fedora:latest
 MAINTAINER "Brett Delle Grazie" <brett.dellegrazie@gmail.com>
 ENV container docker
 
@@ -14,21 +14,14 @@ RUN dnf -y update && dnf -y install systemd && dnf clean all &&\
  rm -f /lib/systemd/system/anaconda.target.wants/*;
 
 # Install Ansible and other requirements.
-RUN dnf makecache fast &&\
+RUN dnf makecache  &&\
  dnf -y install\
-  ansible\
   sudo\
   which\
-  python2-dnf\
+  python3-dnf\
   iproute\
   net-tools\
  && dnf clean all
-
-# Disable requiretty.
-RUN sed -i -e 's/^\(Defaults\s*requiretty\)/#--- \1/'  /etc/sudoers
-
-# Install Ansible inventory file.
-RUN echo '[local]\nlocalhost ansible_connection=local' > /etc/ansible/hosts
 
 VOLUME ["/sys/fs/cgroup", "/tmp", "/run"]
 CMD ["/sbin/init"]
