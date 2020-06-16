@@ -1,34 +1,129 @@
-# Fedora 25 Ansible Test Image
+# bdellegrazie/docker-fedora-systemd
 
-[![Docker Automated build](https://img.shields.io/docker/automated/bdellegrazie/docker-fedora24-ansible.svg?maxAge=2592000)](https://hub.docker.com/r/bdellegrazie/docker-fedora24-ansible/)
+A Docker image based on `fedora` that runs `systemd` with a minimal set of
+services.
 
-Fedora 24 Docker container for Ansible playbook and role testing.
+Intended for use testing Ansible roles with Molecule
 
-## How to Build
+**Development use only. Do not use in production!**
 
-This image is built on Docker Hub automatically any time the upstream OS container is rebuilt, and any time a commit is made or merged to the `master` branch. But if you need to build the image on your own locally, do the following:
+## Supported tags
 
-  1. [Install Docker](https://docs.docker.com/engine/installation/).
-  2. `cd` into this directory.
-  3. Run `docker build -t fedora24-ansible .`
+* `latest`
 
-## How to Use
+## But why?
 
-  1. [Install Docker](https://docs.docker.com/engine/installation/).
-  2. Pull this image from Docker Hub: `docker pull bdellegrazie/docker-fedora24-ansible:latest` (or use the tag you built earlier, e.g. `fedora24-ansible`).
-  3. Run a container from the image: `docker run --detach --privileged --volume=/sys/fs/cgroup:/sys/fs/cgroup:ro bdellegrazie/docker-fedora24-ansible:latest /usr/lib/systemd/systemd` (to test my Ansible roles, I add in a volume mounted from the current working directory with ``--volume=`pwd`:/etc/ansible/roles/role_under_test:ro``).
-  4. Use Ansible inside the container:
-    a. `docker exec --tty [container_id] env TERM=xterm ansible --version`
-    b. `docker exec --tty [container_id] env TERM=xterm ansible-playbook /path/to/ansible/playbook.yml --syntax-check`
+Ansible roles often provide services. Testing these properly requires a service manager.
 
-## Notes
+## Running
 
-I use Docker to test my Ansible roles and playbooks on multiple OSes using CI tools like Jenkins and Travis. This container allows me to test roles and playbooks using Ansible running locally inside the container.
+You need to add a couple of flags to the `docker run` command to make `systemd`
+play nice with Docker.
 
-> **Important Note**: I use this image for testing in an isolated environment—not for production—and the settings and configuration used may not be suitable for a secure and performant production environment. Use on production servers/in the wild at your own risk!
+We must disable seccomp because `systemd` uses system calls that are not
+allowed by Docker's default seccomp profile:
 
-## Author
+    --security-opt seccomp=unconfined
 
-Created in 2016 by [Jeff Geerling](http://jeffgeerling.com/), author of [Ansible for DevOps](https://www.ansiblefordevops.com/).
+fedora's `systemd` expects `/run` and `/run/lock` to be `tmpfs` file systems,
+but it can't mount them itself in an unprivileged container:
 
-Slight modification by Brett Delle Grazie to include systemd for testing roles with services.
+    --tmpfs /run
+    --tmpfs /run/lock
+    --tmpfs /tmp
+
+`systemd` needs read-only access to the kernel's cgroup hierarchies:
+
+    -v /sys/fs/cgroup:/sys/fs/cgroup:ro
+
+Allocating a pseudo-TTY is not strictly necessary, but it gives us pretty
+color-coded logs that we can look at with `docker logs`:
+
+    -t
+
+## Testing
+
+This image is useless as it's only meant to serve as a base for your own
+images, but you can still create a container from it. First set up your Docker
+host as described in Setup above. Then run the following command:
+
+    docker run -d --name systemd --security-opt seccomp=unconfined --tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro -t bdellegrazie/fedora-systemd
+
+Check the logs to see if `systemd` started correctly:
+
+    docker logs systemd
+
+If everything worked, the output should look like this:
+
+    systemd 229 running in system mode. (+PAM +AUDIT +SELINUX +IMA +APPARMOR +SMACK +SYSVINIT +UTMP +LIBCRYPTSETUP +GCRYPT +GNUTLS +ACL +XZ -LZ4 +SECCOMP +BLKID +ELFUTILS +KMOD -IDN)
+    Detected virtualization docker.
+    Detected architecture x86-64.
+
+    Welcome to fedora 24!
+
+    Set hostname to <aad1d41c3a2e>.
+    Initializing machine ID from random generator.
+    [  OK  ] Created slice System Slice.
+    [  OK  ] Reached target Slices.
+    [  OK  ] Listening on Journal Socket.
+    [  OK  ] Listening on Journal Socket (/dev/log).
+    [  OK  ] Reached target Local File Systems.
+             Starting Journal Service...
+             Starting Create Volatile Files and Directories...
+    [  OK  ] Reached target Swap.
+    [  OK  ] Reached target Sockets.
+    [  OK  ] Reached target Paths.
+    [  OK  ] Started Create Volatile Files and Directories.
+    [  OK  ] Started Journal Service.
+
+Also check the journal logs:
+
+    docker exec systemd journalctl
+
+The output should look like this:
+
+    -- Logs begin at Thu 2017-03-16 14:12:14 UTC, end at Thu 2017-03-16 14:12:26 UTC. --
+    Mar 16 14:12:14 aad1d41c3a2e systemd-journald[19]: Runtime journal (/run/log/journal/) is 8.0M, max 99.9M, 91.9M free.
+    Mar 16 14:12:14 aad1d41c3a2e systemd-journald[19]: Journal started
+    Mar 16 14:12:14 aad1d41c3a2e systemd[1]: Reached target System Initialization.
+    Mar 16 14:12:15 aad1d41c3a2e systemd[1]: Reached target Basic System.
+    Mar 16 14:12:17 aad1d41c3a2e systemd[1]: Starting LSB: Set the CPU Frequency Scaling governor to "ondemand"...
+    Mar 16 14:12:18 aad1d41c3a2e systemd[1]: Starting Permit User Sessions...
+    Mar 16 14:12:19 aad1d41c3a2e systemd[1]: Starting /etc/rc.local Compatibility...
+    Mar 16 14:12:20 aad1d41c3a2e systemd[1]: Started Daily Cleanup of Temporary Directories.
+    Mar 16 14:12:21 aad1d41c3a2e systemd[1]: Reached target Timers.
+    Mar 16 14:12:22 aad1d41c3a2e systemd[1]: Started Permit User Sessions.
+    Mar 16 14:12:23 aad1d41c3a2e systemd[1]: Started /etc/rc.local Compatibility.
+    Mar 16 14:12:24 aad1d41c3a2e systemd[1]: Started LSB: Set the CPU Frequency Scaling governor to "ondemand".
+    Mar 16 14:12:25 aad1d41c3a2e systemd[1]: Reached target Multi-User System.
+    Mar 16 14:12:26 aad1d41c3a2e systemd[1]: Startup finished in 11.215s.
+
+To check for clean shutdown, in one terminal run:
+
+    docker exec systemd journalctl -f
+
+And in another shut down `systemd`:
+
+    docker stop systemd
+
+The journalctl logs should look like this on a clean shutdown:
+
+    Mar 16 14:15:49 aad1d41c3a2e systemd[1]: Received SIGRTMIN+3.
+    Mar 16 14:15:49 aad1d41c3a2e systemd[1]: Stopped target Multi-User System.
+    Mar 16 14:15:50 aad1d41c3a2e systemd[1]: Stopping Permit User Sessions...
+    Mar 16 14:15:51 aad1d41c3a2e systemd[1]: Stopping LSB: Set the CPU Frequency Scaling governor to "ondemand"...
+    Mar 16 14:15:52 aad1d41c3a2e systemd[1]: Stopped /etc/rc.local Compatibility.
+    Mar 16 14:15:53 aad1d41c3a2e systemd[1]: Stopped target Timers.
+    Mar 16 14:15:54 aad1d41c3a2e systemd[1]: Stopped Daily Cleanup of Temporary Directories.
+    Mar 16 14:15:55 aad1d41c3a2e systemd[1]: Stopped Permit User Sessions.
+    Mar 16 14:15:56 aad1d41c3a2e systemd[1]: Stopped LSB: Set the CPU Frequency Scaling governor to "ondemand".
+    Mar 16 14:15:57 aad1d41c3a2e systemd[1]: Stopped target Basic System.
+    Mar 16 14:15:58 aad1d41c3a2e systemd[1]: Stopped target Slices.
+
+## Known issues
+
+## License
+
+Copyright © 2019 [bdellegrazie](https://github.com/bdellegrazie). Licensed under [the MIT license](https://github.com/docker-fedora-systemd/blob/master/LICENSE).
+
+Copyright © 2016-2018 [Solita](http://www.solita.fi). Licensed under [the MIT license](https://github.com/solita/docker-systemd/blob/master/LICENSE).

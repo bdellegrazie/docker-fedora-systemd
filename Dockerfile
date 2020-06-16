@@ -1,5 +1,5 @@
 FROM fedora:latest
-MAINTAINER "Brett Delle Grazie" <brett.dellegrazie@gmail.com>
+LABEL maintainer="brett.dellegrazie@gmail.com"
 ENV container docker
 
 # Update and enable systemd.
